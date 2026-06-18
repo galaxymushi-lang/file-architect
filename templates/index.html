@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FILEARCHITECT // TERMINAL</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+
+<canvas id="matrixCanvas"></canvas>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+    <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>
+        </div>
+        <div>
+            <h2>FILEARCHITECT</h2>
+            <span>NEURAL INTERFACE v2.0</span>
+        </div>
+    </div>
+
+    <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="ai" onclick="switchTab('ai')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>
+            <span>Terminal</span>
+        </button>
+        <button class="nav-item" data-tab="dashboard" onclick="switchTab('dashboard')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>System</span>
+        </button>
+        <button class="nav-item" data-tab="assistants" onclick="switchTab('assistants')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Agents</span>
+        </button>
+        <button class="nav-item" data-tab="personalization" onclick="switchTab('personalization')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Personalize</span>
+        </button>
+        <button class="nav-item" data-tab="extensions" onclick="switchTab('extensions')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span>Extensions</span>
+        </button>
+        <button class="nav-item" data-tab="settings" onclick="switchTab('settings')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>Config</span>
+        </button>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="user-card">
+            <div class="user-avatar">{{ user[0]|upper }}</div>
+            <div class="user-info">
+                <div class="user-name">{{ user }}</div>
+                <div class="user-role">OPERATOR</div>
+            </div>
+        </div>
+    </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+    <header class="topbar">
+        <div class="topbar-left">
+            <span class="page-title" id="pageTitle">// TERMINAL</span>
+        </div>
+        <div class="topbar-right">
+            <div class="status-badge offline" id="ollamaStatus">
+                <span class="status-dot"></span>
+                CHECKING...
+            </div>
+            <a href="/logout" class="topbar-btn" title="Disconnect">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </a>
+        </div>
+    </header>
+
+    <div class="content">
+
+        <!-- TERMINAL CHAT -->
+        <div id="tab-ai" class="tab-content active">
+            <div class="chat-layout">
+                <!-- CHAT HISTORY SIDEBAR -->
+                <div class="chat-history-panel" id="chatHistoryPanel">
+                    <div class="chat-history-header">
+                        <span>// HISTORY</span>
+                        <button class="btn btn-primary btn-sm" onclick="newChat()">+ NEW</button>
+                    </div>
+                    <div class="chat-history-list" id="chatHistoryList"></div>
+                </div>
+
+                <!-- MAIN CHAT -->
+                <div class="card chat-card">
+                    <div class="chat-model-bar">
+                        <div class="chat-model-selector">
+                            <label>MODEL:</label>
+                            <select id="chatModelSelect" onchange="switchChatModel()"></select>
+                        </div>
+                        <div class="chat-toolbar">
+                            <button class="toolbar-btn" onclick="toggleSearch()" title="Search (Ctrl+F)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            </button>
+                            <button class="toolbar-btn" onclick="exportChat('md')" title="Export Markdown">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            </button>
+                            <button class="toolbar-btn" onclick="exportChat('txt')" title="Export Text">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            </button>
+                        </div>
+                        <div class="chat-token-info">
+                            <span id="tokenCount">0</span> tokens
+                        </div>
+                        <div class="chat-model-info" id="chatModelInfo">qwen2.5:0.5b</div>
+                    </div>
+                    <div class="chat-search-bar hidden" id="chatSearchBar">
+                        <input type="text" id="chatSearchInput" placeholder="Search in chat..." oninput="searchInChat()">
+                        <button class="btn btn-ghost btn-sm" onclick="toggleSearch()">X</button>
+                    </div>
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="msg ai">
+                            <div class="msg-avatar">AI</div>
+                            <div class="msg-bubble">> SYSTEM ONLINE<br>> Neural interface initialized.<br>> Ready for input, operator.</div>
+                        </div>
+                    </div>
+                    <div class="chat-templates-bar" id="chatTemplatesBar">
+                        <button class="template-chip" onclick="useTemplate('explain')">Explain</button>
+                        <button class="template-chip" onclick="useTemplate('write')">Write</button>
+                        <button class="template-chip" onclick="useTemplate('summarize')">Summarize</button>
+                        <button class="template-chip" onclick="useTemplate('code')">Code</button>
+                        <button class="template-chip" onclick="useTemplate('fix')">Fix</button>
+                        <button class="template-chip" onclick="useTemplate('translate')">Translate</button>
+                        <button class="template-chip" onclick="useTemplate('email')">Email</button>
+                        <button class="template-chip" onclick="useTemplate('brainstorm')">Brainstorm</button>
+                    </div>
+                    <div class="chat-input-bar">
+                        <div class="chat-input-row">
+                            <button class="chat-upload-btn" onclick="document.getElementById('chatFileInput').click()" title="Upload data">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                            <input type="file" id="chatFileInput" accept=".pdf,.docx,.xlsx,.xls,.pptx,.txt,.csv" hidden>
+                            <button class="chat-upload-btn" id="voiceBtn" onclick="toggleVoice()" title="Voice Input">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                            </button>
+                            <textarea id="chatInput" rows="1" placeholder="Enter command... (Ctrl+N new chat)"></textarea>
+                            <button class="btn btn-primary" onclick="sendChat()">EXEC</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div id="tab-dashboard" class="tab-content">
+            <div class="settings-grid">
+                <div class="card">
+                    <div class="card-header"><h3>// CPU</h3></div>
+                    <div class="card-body">
+                        <div class="gauge-container">
+                            <div class="gauge" id="cpuGauge">
+                                <div class="gauge-fill" id="cpuFill"></div>
+                                <div class="gauge-text" id="cpuText">0%</div>
+                            </div>
+                            <div class="gauge-label">USAGE</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>// MEMORY</h3></div>
+                    <div class="card-body">
+                        <div class="gauge-container">
+                            <div class="gauge" id="memGauge">
+                                <div class="gauge-fill" id="memFill"></div>
+                                <div class="gauge-text" id="memText">0%</div>
+                            </div>
+                            <div class="gauge-label" id="memLabel">0 / 0 GB</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>// DISK</h3></div>
+                    <div class="card-body">
+                        <div class="gauge-container">
+                            <div class="gauge" id="diskGauge">
+                                <div class="gauge-fill" id="diskFill"></div>
+                                <div class="gauge-text" id="diskText">0%</div>
+                            </div>
+                            <div class="gauge-label" id="diskLabel">0 / 0 GB</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>// MODELS</h3></div>
+                    <div class="card-body">
+                        <div id="systemModels" class="system-models-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AGENTS -->
+        <div id="tab-assistants" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h3>// AGENTS</h3>
+                    <button class="btn btn-primary btn-sm" onclick="showAddAssistantModal()">+ DEPLOY</button>
+                </div>
+                <div class="card-body">
+                    <div id="assistantList" class="assistant-grid"></div>
+                </div>
+            </div>
+            
+            <div id="addAssistantModal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>DEPLOY NEW AGENT</h3>
+                        <button class="btn-close" onclick="closeModal('addAssistantModal')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>AGENT DESIGNATION</label>
+                            <input type="text" id="assistantName" class="form-input" placeholder="codename...">
+                        </div>
+                        <div class="form-group">
+                            <label>PROVIDER</label>
+                            <select id="assistantProvider" class="form-select" onchange="updateModelOptions()">
+                                <option value="ollama">OLLAMA [LOCAL]</option>
+                                <option value="openai">OPENAI [CLOUD]</option>
+                                <option value="groq">GROQ [CLOUD]</option>
+                                <option value="gemini">GEMINI [CLOUD]</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="ollamaModelsGroup">
+                            <label>MODEL</label>
+                            <select id="assistantModel" class="form-select"></select>
+                        </div>
+                        <div class="form-group hidden" id="apiKeyGroup">
+                            <label>API KEY</label>
+                            <input type="password" id="assistantApiKey" class="form-input" placeholder="sk-...">
+                        </div>
+                        <div class="form-group">
+                            <label>MISSION PARAMETERS</label>
+                            <textarea id="assistantPrompt" class="form-textarea" rows="3" placeholder="You are a..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeModal('addAssistantModal')">ABORT</button>
+                        <button class="btn btn-primary" onclick="addAssistant()">DEPLOY</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PERSONALIZATION -->
+        <div id="tab-personalization" class="tab-content">
+            <div class="settings-grid">
+                <div class="card">
+                    <div class="card-header"><h3>// IDENTITY</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>OPERATOR NAME</label>
+                            <input type="text" id="pName" class="form-input" placeholder="Your codename" onchange="savePersonalization()">
+                        </div>
+                        <div class="form-group">
+                            <label>MISSION ROLE</label>
+                            <select id="pRole" class="form-select" onchange="savePersonalization()">
+                                <option value="developer">Developer</option>
+                                <option value="analyst">Data Analyst</option>
+                                <option value="researcher">Researcher</option>
+                                <option value="writer">Content Writer</option>
+                                <option value="student">Student</option>
+                                <option value="manager">Project Manager</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>WORK STYLE</label>
+                            <select id="pWorkStyle" class="form-select" onchange="savePersonalization()">
+                                <option value="concise">Concise & Direct</option>
+                                <option value="detailed">Detailed & Thorough</option>
+                                <option value="creative">Creative & Brainstorming</option>
+                                <option value="technical">Technical & Precise</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><h3>// BEHAVIOR</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>LANGUAGE</label>
+                            <select id="pLanguage" class="form-select" onchange="savePersonalization()">
+                                <option value="en">English</option>
+                                <option value="sw">Swahili</option>
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="zh">Chinese</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>TONE</label>
+                            <select id="pTone" class="form-select" onchange="savePersonalization()">
+                                <option value="professional">Professional</option>
+                                <option value="casual">Casual</option>
+                                <option value="friendly">Friendly</option>
+                                <option value="formal">Formal</option>
+                                <option value="humorous">Humorous</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>RESPONSE LENGTH</label>
+                            <select id="pLength" class="form-select" onchange="savePersonalization()">
+                                <option value="short">Short (1-2 sentences)</option>
+                                <option value="medium">Medium (paragraph)</option>
+                                <option value="long">Long (detailed)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><h3>// EXPERTISE</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>PRIMARY DOMAIN</label>
+                            <select id="pDomain" class="form-select" onchange="savePersonalization()">
+                                <option value="general">General</option>
+                                <option value="programming">Programming</option>
+                                <option value="data_science">Data Science</option>
+                                <option value="web_dev">Web Development</option>
+                                <option value="ai_ml">AI / Machine Learning</option>
+                                <option value="cybersecurity">Cybersecurity</option>
+                                <option value="business">Business</option>
+                                <option value="academic">Academic</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>CODE STYLE</label>
+                            <select id="pCodeStyle" class="form-select" onchange="savePersonalization()">
+                                <option value="python">Python</option>
+                                <option value="javascript">JavaScript</option>
+                                <option value="java">Java</option>
+                                <option value="cpp">C++</option>
+                                <option value="rust">Rust</option>
+                                <option value="go">Go</option>
+                                <option value="none">No Code</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>SPECIALTY TAGS</label>
+                            <input type="text" id="pTags" class="form-input" placeholder="flask, react,数据分析..." onchange="savePersonalization()">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><h3>// PROTOCOLS</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="pAutoCorrect" onchange="savePersonalization()"> AUTO-CORRECT CODE
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="pExplainCode" onchange="savePersonalization()"> EXPLAIN CODE BLOCKS
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="pShowExamples" onchange="savePersonalization()"> SHOW EXAMPLES
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="pAskClarify" onchange="savePersonalization()"> ASK WHEN UNCLEAR
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SETTINGS -->
+        <div id="tab-settings" class="tab-content">
+            <div class="settings-grid">
+                <div class="card">
+                    <div class="card-header"><h3>// SYSTEM</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>THEME</label>
+                            <select id="settingTheme" class="form-select" onchange="saveSettings()">
+                                <option value="matrix">Matrix Green</option>
+                                <option value="cyber">Cyber Blue</option>
+                                <option value="phantom">Phantom Purple</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>DEFAULT MODEL</label>
+                            <select id="settingDefaultModel" class="form-select" onchange="saveSettings()"></select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header"><h3>// AI CORE</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>ACTIVE AGENT</label>
+                            <select id="settingActiveAssistant" class="form-select" onchange="saveSettings()">
+                                <option value="default">DEFAULT [LOCAL]</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>TEMPERATURE</label>
+                            <input type="range" id="settingTemperature" min="0" max="2" step="0.1" value="0.7" onchange="saveSettings(); document.getElementById('tempValue').textContent = this.value">
+                            <span id="tempValue">0.7</span>
+                        </div>
+                        <div class="form-group">
+                            <label>MAX TOKENS</label>
+                            <input type="number" id="settingMaxTokens" class="form-input" value="2048" min="100" max="8192" onchange="saveSettings()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EXTENSIONS TAB -->
+        <div id="tab-extensions" class="tab-content">
+            <div class="terminal-panel" style="max-width:900px;margin:0 auto">
+                <div class="panel-header">
+                    <h2>// EXTENSIONS MANAGER</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn-matrix btn-sm" onclick="reloadExtensions()">⟳ RELOAD</button>
+                        <button class="btn-matrix btn-sm" onclick="showPluginDocs()">? HOW TO CREATE</button>
+                    </div>
+                </div>
+                <div id="extensionsList" class="extensions-list">
+                    <p style="color:#00ff41;opacity:0.5">LOADING EXTENSIONS...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+</div>
+
+<div id="toastContainer" class="toast-container"></div>
+
+<div id="shortcutsModal" class="modal hidden">
+    <div class="modal-content" style="max-width:500px">
+        <div class="modal-header">
+            <h3>KEYBOARD SHORTCUTS</h3>
+            <button class="btn-close" onclick="closeModal('shortcutsModal')">&times;</button>
+        </div>
+        <div class="modal-body" style="font-size:0.75rem">
+            <div class="shortcut-row"><span>Ctrl + N</span><span>New Chat</span></div>
+            <div class="shortcut-row"><span>Ctrl + Enter</span><span>Send Message</span></div>
+            <div class="shortcut-row"><span>Ctrl + F</span><span>Search in Chat</span></div>
+            <div class="shortcut-row"><span>Ctrl + E</span><span>Export Chat</span></div>
+            <div class="shortcut-row"><span>Ctrl + /</span><span>Show Shortcuts</span></div>
+            <div class="shortcut-row"><span>Escape</span><span>Close Modal</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Matrix Rain Effect
+const canvas = document.getElementById('matrixCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+const fontSize = 14;
+let columns = Math.floor(canvas.width / fontSize);
+let drops = Array(columns).fill(1);
+
+function drawMatrix() {
+    ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#00ff41';
+    ctx.font = fontSize + 'px monospace';
+    
+    for (let i = 0; i < drops.length; i++) {
+        const text = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+        
+        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+        }
+        drops[i]++;
+    }
+}
+
+setInterval(drawMatrix, 50);
+
+window.addEventListener('resize', () => {
+    columns = Math.floor(canvas.width / fontSize);
+    drops = Array(columns).fill(1);
+});
+</script>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
