@@ -175,8 +175,12 @@ async function send() {
     let modelName = modelVal;
     if (modelVal.includes(':')) {
         const parts = modelVal.split(':');
-        assistantId = parts[0];
-        modelName = parts.slice(1).join(':');
+        // Only treat as assistant_id:model if the first part is a short hex id (from UUID)
+        const candidateId = parts[0];
+        if (/^[0-9a-f]{6,8}$/.test(candidateId)) {
+            assistantId = candidateId;
+            modelName = parts.slice(1).join(':');
+        }
     }
 
     const loader = document.createElement('div');
@@ -312,9 +316,14 @@ async function loadModels() {
 
 function updateModel() {
     const val = $('#modelSelect').value;
+    // Only parse as assistant_id:model if first part is a hex id
     if (val.includes(':')) {
         const parts = val.split(':');
-        chatModel = parts.slice(1).join(':');
+        if (/^[0-9a-f]{6,8}$/.test(parts[0])) {
+            chatModel = parts.slice(1).join(':');
+        } else {
+            chatModel = val;
+        }
     } else {
         chatModel = val;
     }
