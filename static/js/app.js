@@ -367,7 +367,7 @@ async function loadAssistantsForSettings() {
 
 // ---- Chatbot Providers ----
 const providerMeta = {
-    ollama:     { label: 'Ollama', color: '#333', icon: 'O', models: 'qwen2.5:0.5b, phi3, tinyllama, llama3, mistral, codellama' },
+    ollama:     { label: 'Ollama', color: '#525252', icon: 'O', models: 'qwen2.5:0.5b, phi3, tinyllama, llama3, mistral, codellama' },
     openai:     { label: 'OpenAI', color: '#10a37f', icon: 'G', models: 'gpt-4o, gpt-4o-mini, gpt-4-turbo, o1-mini, gpt-3.5-turbo' },
     anthropic:  { label: 'Claude', color: '#d97706', icon: 'C', models: 'claude-opus-4-20250514, claude-sonnet-4-20250514, claude-3-haiku-20240307' },
     google:     { label: 'Gemini', color: '#4285f4', icon: 'G', models: 'gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash' },

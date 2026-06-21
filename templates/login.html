@@ -14,13 +14,13 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             min-height: 100vh;
             display: flex;
-            background: #0f172a;
+            background: #0d0d0d;
             color: #e2e8f0;
         }
 
         .left-panel {
             flex: 1;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            background: linear-gradient(135deg, #0d0d0d 0%, #1a1a1a 100%);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -36,8 +36,8 @@
             left: -50%;
             width: 200%;
             height: 200%;
-            background: radial-gradient(circle at 30% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-                        radial-gradient(circle at 70% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 50%);
+            background: radial-gradient(circle at 30% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 80%, rgba(168, 85, 247, 0.06) 0%, transparent 50%);
             animation: drift 20s ease-in-out infinite;
         }
 
@@ -54,13 +54,13 @@
         .brand-icon {
             width: 56px;
             height: 56px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            background: linear-gradient(135deg, #6366f1, #a855f7);
             border-radius: 14px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-bottom: 2rem;
-            box-shadow: 0 0 40px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 0 40px rgba(99, 102, 241, 0.3);
         }
 
         .brand-icon svg {
@@ -107,7 +107,7 @@
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: #3b82f6;
+            background: #6366f1;
             flex-shrink: 0;
         }
 
@@ -117,8 +117,8 @@
             align-items: center;
             justify-content: center;
             padding: 2rem;
-            background: #1e293b;
-            border-left: 1px solid #334155;
+            background: #1a1a1a;
+            border-left: 1px solid #2a2a2a;
         }
 
         .login-box {
@@ -141,7 +141,7 @@
 
         .tabs {
             display: flex;
-            background: #0f172a;
+            background: #0d0d0d;
             border-radius: 10px;
             padding: 4px;
             margin-bottom: 2rem;
@@ -162,7 +162,7 @@
         }
 
         .tab.active {
-            background: #1e293b;
+            background: #1a1a1a;
             color: #f1f5f9;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         }
@@ -199,8 +199,8 @@
         input[type="password"] {
             width: 100%;
             padding: 0.75rem 1rem 0.75rem 2.75rem;
-            background: #0f172a;
-            border: 1px solid #334155;
+            background: #0d0d0d;
+            border: 1px solid #2a2a2a;
             border-radius: 10px;
             color: #f1f5f9;
             font-size: 0.9rem;
@@ -210,8 +210,8 @@
         }
 
         input:focus {
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
         }
 
         input::placeholder {
@@ -221,7 +221,7 @@
         .btn-primary {
             width: 100%;
             padding: 0.8rem;
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            background: linear-gradient(135deg, #6366f1, #5558e6);
             color: white;
             border: none;
             border-radius: 10px;
@@ -234,9 +234,9 @@
         }
 
         .btn-primary:hover {
-            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            background: linear-gradient(135deg, #5558e6, #4f46e5);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+            box-shadow: 0 4px 12px rgba(85, 88, 230, 0.4);
         }
 
         .btn-primary:active {
@@ -272,7 +272,7 @@
             content: '';
             flex: 1;
             height: 1px;
-            background: #334155;
+            background: #2a2a2a;
         }
 
         .guest-link {
@@ -282,7 +282,7 @@
         }
 
         .guest-link a {
-            color: #3b82f6;
+            color: #6366f1;
             text-decoration: none;
             font-weight: 500;
         }
@@ -294,7 +294,7 @@
         @media (max-width: 900px) {
             .left-panel { display: none; }
             .right-panel { width: 100%; border: none; }
-            body { background: #1e293b; }
+            body { background: #1a1a1a; }
         }
     </style>
 </head>
@@ -302,16 +302,16 @@
     <div class="left-panel">
         <div class="brand">
             <div class="brand-icon">
-                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h5v7h7v9H6z"/><path d="M8 14h8v1.5H8zm0 3h6v1.5H8z"/></svg>
+                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
             </div>
             <h1>GALACTOS</h1>
-            <p>GALACTOS ni AI assistant inayoendeshwa na kompyuta yako. Inazungumza, kuchambua hati, na kukusaidia kazi zako za kila siku.</p>
+            <p>AI assistant inayoendeshwa na kompyuta yako. Inazungumza, kuchambua hati, na kukusaidia kazi zako za kila siku.</p>
         </div>
         <div class="features">
             <div class="feature"><span class="feature-dot"></span> Zungumza na AI kuhusu chochote</div>
             <div class="feature"><span class="feature-dot"></span> Chambua PDF, DOCX, XLSX, PPTX</div>
             <div class="feature"><span class="feature-dot"></span> Endesha Python, JavaScript, Shell</div>
-            <div class="feature"><span class="feature-dot"></span> Tafuta mtandaoni, tuma email</div>
+            <div class="feature"><span class="feature-dot"></span> Unganisha OpenAI, Claude, Gemini, Groq</div>
         </div>
     </div>
 
