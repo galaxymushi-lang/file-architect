@@ -17,7 +17,7 @@ class CodeExecutorExtension(BaseExtension):
     display_name = "Code Executor"
     description = "Execute Python, JavaScript, or Shell code in a sandboxed environment"
     version = "1.0.0"
-    author = "FileArchitect"
+    author = "GALACTOS"
     icon = "code"
 
     LANGUAGES = {

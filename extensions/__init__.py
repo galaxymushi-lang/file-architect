@@ -1,5 +1,5 @@
 """
-FileArchitect Extensions
+GALACTOS Extensions
 Auto-discovers and loads all extensions.
 """
 

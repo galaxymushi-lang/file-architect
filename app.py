@@ -3,6 +3,7 @@ import re
 import json
 import uuid
 import hashlib
+import time
 import requests
 import pandas as pd
 from datetime import datetime
@@ -138,10 +139,11 @@ def save_personalization(data):
         json.dump(data, f, indent=2)
 
 # ========== AI CORE ==========
-def ollama_chat(messages, stream=False, model=None):
+def ollama_chat(messages, stream=False, model=None, temperature=0.7, max_tokens=2048):
     try:
         resp = requests.post(f"{OLLAMA_URL}/api/chat",
-            json={"model": model or OLLAMA_MODEL, "messages": messages, "stream": stream}, timeout=120)
+            json={"model": model or OLLAMA_MODEL, "messages": messages, "stream": stream,
+                  "options": {"temperature": temperature, "num_predict": max_tokens}}, timeout=120)
         if stream:
             return resp
         data = resp.json()
@@ -230,6 +232,108 @@ def gemini_stream(messages, api_key, model="gemini-1.5-flash"):
         return resp
     except Exception as e:
         raise Exception(f"Gemini Error: {str(e)}")
+
+def anthropic_chat(messages, api_key, model="claude-3-haiku-20240307", stream=False):
+    try:
+        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
+        system_msg = ""
+        api_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_msg = msg.get("content", "")
+            else:
+                api_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+        if not api_messages:
+            api_messages = [{"role": "user", "content": "Hello"}]
+        data = {"model": model, "max_tokens": 4096, "messages": api_messages}
+        if system_msg:
+            data["system"] = system_msg
+        data["stream"] = stream
+        resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=data, timeout=120)
+        if stream:
+            return resp
+        result = resp.json()
+        content = result.get("content", [])
+        if content:
+            return content[0].get("text", "")
+        error = result.get("error", {}).get("message", "Unknown error")
+        return f"Anthropic Error: {error}"
+    except Exception as e:
+        return f"Anthropic Error: {str(e)}"
+
+def anthropic_stream(messages, api_key, model="claude-3-haiku-20240307"):
+    try:
+        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
+        system_msg = ""
+        api_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_msg = msg.get("content", "")
+            else:
+                api_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+        if not api_messages:
+            api_messages = [{"role": "user", "content": "Hello"}]
+        data = {"model": model, "max_tokens": 4096, "messages": api_messages, "stream": True}
+        if system_msg:
+            data["system"] = system_msg
+        resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=data, timeout=120, stream=True)
+        return resp
+    except Exception as e:
+        raise Exception(f"Anthropic Error: {str(e)}")
+
+def openrouter_chat(messages, api_key, model="anthropic/claude-3.5-sonnet", stream=False):
+    try:
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        data = {"model": model, "messages": messages, "stream": stream}
+        resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=120)
+        if stream:
+            return resp
+        result = resp.json()
+        return result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    except Exception as e:
+        return f"OpenRouter Error: {str(e)}"
+
+def openrouter_stream(messages, api_key, model="anthropic/claude-3.5-sonnet"):
+    try:
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        data = {"model": model, "messages": messages, "stream": True}
+        resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=120, stream=True)
+        return resp
+    except Exception as e:
+        raise Exception(f"OpenRouter Error: {str(e)}")
+
+def custom_api_chat(messages, api_url, api_key="", model="", stream=False):
+    try:
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        data = {"model": model, "messages": messages, "stream": stream}
+        resp = requests.post(api_url, headers=headers, json=data, timeout=120)
+        if stream:
+            return resp
+        result = resp.json()
+        if "choices" in result:
+            return result["choices"][0].get("message", {}).get("content", "")
+        if "message" in result:
+            return result["message"].get("content", "")
+        if "content" in result:
+            if isinstance(result["content"], list):
+                return result["content"][0].get("text", "")
+            return result["content"]
+        return str(result)
+    except Exception as e:
+        return f"API Error: {str(e)}"
+
+def custom_api_stream(messages, api_url, api_key="", model=""):
+    try:
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        data = {"model": model, "messages": messages, "stream": True}
+        resp = requests.post(api_url, headers=headers, json=data, timeout=120, stream=True)
+        return resp
+    except Exception as e:
+        raise Exception(f"API Error: {str(e)}")
 
 def check_ollama():
     try:
@@ -430,7 +534,7 @@ def smart_convert_pptx(structured, output_path):
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[0])
     slide.shapes.title.text = structured.get('title', 'Presentation')
-    slide.placeholders[1].text = "Generated by FileArchitect"
+    slide.placeholders[1].text = "Generated by GALACTOS"
     for section in structured.get('sections', []):
         s = prs.slides.add_slide(prs.slide_layouts[1])
         s.shapes.title.text = section.get('heading', 'Section')
@@ -814,7 +918,110 @@ def download_file(filename):
         return send_file(filepath, as_attachment=True)
     return jsonify({"error": "File not found"}), 404
 
+@app.route('/download/<filename>')
+def download_uploaded_file(filename):
+    filepath = os.path.join(UPLOAD, filename)
+    if os.path.exists(filepath):
+        return send_file(filepath, as_attachment=True)
+    return jsonify({"error": "File not found"}), 404
+
+@app.route('/api/files')
+@login_required
+def list_files():
+    files = []
+    for f in os.listdir(UPLOAD):
+        fp = os.path.join(UPLOAD, f)
+        if os.path.isfile(fp):
+            size = os.path.getsize(fp)
+            if size > 1024*1024: size_str = f"{size/(1024*1024):.1f} MB"
+            elif size > 1024: size_str = f"{size/1024:.1f} KB"
+            else: size_str = f"{size} B"
+            files.append({"name": f, "size": size_str, "date": time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(fp)))})
+    return jsonify(files)
+
+@app.route('/api/files/<filename>', methods=['DELETE'])
+@login_required
+def delete_file(filename):
+    fp = os.path.join(UPLOAD, filename)
+    if os.path.exists(fp):
+        os.remove(fp)
+        return jsonify({"ok": True})
+    return jsonify({"error": "Not found"}), 404
+
+@app.route('/api/files/<filename>/preview')
+@login_required
+def preview_file(filename):
+    fp = os.path.join(UPLOAD, filename)
+    if not os.path.exists(fp):
+        return jsonify({"error": "Not found"}), 404
+    try:
+        with open(fp, 'r', errors='ignore') as f:
+            content = f.read(5000)
+        return jsonify({"content": content})
+    except:
+        return jsonify({"content": "[Binary file - cannot preview]"})
+
+@app.route('/api/analyze', methods=['POST'])
+@login_required
+def analyze_file():
+    data = request.get_json()
+    filename = data.get('file')
+    prompt = data.get('prompt', '')
+    fp = os.path.join(UPLOAD, filename)
+    if not os.path.exists(fp):
+        return jsonify({"error": "File not found"}), 404
+    try:
+        with open(fp, 'r', errors='ignore') as f:
+            content = f.read(8000)
+        full_prompt = f"Analyze this document.\n\nDocument content:\n{content}\n\nTask: {prompt}"
+        result = stream_ai_response(full_prompt)
+        return jsonify({"result": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/generate-doc', methods=['POST'])
+@login_required
+def generate_document():
+    data = request.get_json()
+    prompt = data.get('prompt', '')
+    full_prompt = f"Write a professional document based on this request: {prompt}\n\nDocument:"
+    result = stream_ai_response(full_prompt)
+    out_name = f"generated_{int(time.time())}.md"
+    out_path = os.path.join(OUTPUT, out_name)
+    with open(out_path, 'w') as f: f.write(result)
+    return jsonify({"download_url": f"/api/download/{out_name}"})
+
+@app.route('/api/memory', methods=['GET'])
+@login_required
+def get_memory():
+    return jsonify({"memory": ai_memory[-50:], "enabled": True})
+
+@app.route('/api/memory', methods=['POST'])
+@login_required
+def add_memory():
+    data = request.get_json()
+    entry = data.get('entry', '')
+    if entry:
+        ai_memory.append({"text": entry, "time": time.time()})
+        if len(ai_memory) > 200: ai_memory.pop(0)
+    return jsonify({"ok": True})
+
+ai_memory = []
+
 # ========== SETTINGS ROUTES ==========
+def stream_ai_response(prompt, provider="ollama", model=None, api_key=""):
+    """Non-streaming AI call for analysis/generation."""
+    model = model or OLLAMA_MODEL
+    try:
+        resp = requests.post(f"{OLLAMA_URL}/api/chat",
+            json={"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False},
+            timeout=120)
+        if resp.status_code == 200:
+            return resp.json().get("message", {}).get("content", "")
+        return f"Error: {resp.status_code}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 @app.route('/api/settings', methods=['GET'])
 @login_required
 def get_settings():
@@ -844,6 +1051,7 @@ def add_assistant():
         "name": data.get("name", "Assistant"),
         "provider": data.get("provider", "ollama"),
         "model": data.get("model", "qwen2.5:0.5b"),
+        "models": data.get("models", []),
         "api_key": data.get("api_key", ""),
         "api_url": data.get("api_url", ""),
         "system_prompt": data.get("system_prompt", "You are a helpful assistant."),
@@ -851,7 +1059,7 @@ def add_assistant():
     }
     assistants.append(assistant)
     save_assistants(assistants)
-    return jsonify({"success": True, "assistant": assistant})
+    return jsonify(assistant)
 
 @app.route('/api/assistants/<assistant_id>', methods=['DELETE'])
 @login_required
@@ -939,7 +1147,20 @@ def ai_chat():
         if os.path.exists(fp):
             file_content = get_file_content(fp)[:8000]
     
-    system_msg = "You are FileArchitect AI. Help users analyze files, generate documents, and answer questions. Be helpful and concise."
+    system_msg = "You are GALACTOS AI. Help users analyze files, generate documents, and answer questions. Be helpful and concise."
+    
+    # Inject personalization
+    personalization = load_personalization()
+    if personalization:
+        parts = []
+        if personalization.get("name"): parts.append(f"User's name: {personalization['name']}")
+        if personalization.get("role"): parts.append(f"Role: {personalization['role']}")
+        if personalization.get("language"): parts.append(f"Preferred language: {personalization['language']}")
+        if personalization.get("tone"): parts.append(f"Preferred tone: {personalization['tone']}")
+        if personalization.get("response_length"): parts.append(f"Response length: {personalization['response_length']}")
+        if personalization.get("domain"): parts.append(f"Domain expertise: {personalization['domain']}")
+        if parts:
+            system_msg += "\n\nPersonalization: " + "; ".join(parts)
     
     if file_content:
         system_msg += f"\n\nUploaded file content:\n---\n{file_content}\n---"
@@ -1006,8 +1227,57 @@ def ai_chat():
                                             yield f"data: {json.dumps({'token': token})}\n\n"
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             continue
+            elif provider == "anthropic":
+                resp = anthropic_stream(full_messages, api_key, model)
+                for line in resp.iter_lines():
+                    if line:
+                        try:
+                            line_str = line.decode('utf-8') if isinstance(line, bytes) else line
+                            if line_str.startswith('data: '):
+                                chunk = json.loads(line_str[6:])
+                                if chunk.get("type") == "content_block_delta":
+                                    token = chunk.get("delta", {}).get("text", "")
+                                    if token:
+                                        yield f"data: {json.dumps({'token': token})}\n\n"
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue
+            elif provider == "openrouter":
+                resp = openrouter_stream(full_messages, api_key, model)
+                for line in resp.iter_lines():
+                    if line:
+                        try:
+                            chunk = json.loads(line)
+                            token = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                            if token:
+                                yield f"data: {json.dumps({'token': token})}\n\n"
+                        except json.JSONDecodeError:
+                            continue
+            elif provider == "custom":
+                resp = custom_api_stream(full_messages, api_url, api_key, model)
+                for line in resp.iter_lines():
+                    if line:
+                        try:
+                            line_str = line.decode('utf-8') if isinstance(line, bytes) else line
+                            if line_str.startswith('data: '):
+                                chunk = json.loads(line_str[6:])
+                                if "choices" in chunk:
+                                    token = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                elif "message" in chunk:
+                                    token = chunk.get("message", {}).get("content", "")
+                                elif "content" in chunk:
+                                    c = chunk.get("content", "")
+                                    token = c[0].get("text", "") if isinstance(c, list) else c
+                                else:
+                                    token = ""
+                                if token:
+                                    yield f"data: {json.dumps({'token': token})}\n\n"
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue
             else:
-                resp = ollama_chat(full_messages, stream=True, model=model)
+                settings = load_settings()
+                temp = settings.get("temperature", 0.7)
+                max_tok = settings.get("max_tokens", 2048)
+                resp = ollama_chat(full_messages, stream=True, model=model, temperature=temp, max_tokens=max_tok)
                 for line in resp.iter_lines():
                     if line:
                         try:
@@ -1108,13 +1378,19 @@ def disable_extension(name):
         return jsonify({"success": True})
     return jsonify({"error": "Extension not found"}), 404
 
-@app.route('/api/extensions/<name>/config', methods=['POST'])
+@app.route('/api/extensions/<name>/config', methods=['GET', 'POST'])
 @login_required
-def update_extension_config(name):
+def extension_config(name):
+    ext = registry.extensions.get(name)
+    if not ext:
+        return jsonify({"error": "Extension not found"}), 404
+    if request.method == 'GET':
+        schema = ext.get_settings_schema()
+        return jsonify(schema)
     data = request.get_json()
     if registry.update_config(name, data):
         return jsonify({"success": True})
-    return jsonify({"error": "Extension not found"}), 404
+    return jsonify({"error": "Failed to update config"}), 400
 
 @app.route('/api/extensions/reload', methods=['POST'])
 @login_required
@@ -1148,7 +1424,7 @@ if __name__ == '__main__':
     if not local_ip:
         local_ip = "localhost"
     print(f"\n{'='*50}")
-    print(f"  FILEARCHITECT // NEURAL INTERFACE")
+    print(f"  GALACTOS // NEURAL INTERFACE")
     print(f"{'='*50}")
     print(f"  LOCAL:   http://localhost:5000")
     print(f"  NETWORK: http://{local_ip}:5000")

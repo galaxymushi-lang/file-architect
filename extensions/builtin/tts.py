@@ -15,7 +15,7 @@ class TextToSpeechExtension(BaseExtension):
     display_name = "Text-to-Speech"
     description = "Convert text to speech using browser Web Speech API or Google TTS"
     version = "1.0.0"
-    author = "FileArchitect"
+    author = "GALACTOS"
     icon = "tts"
 
     def __init__(self, app, config=None):

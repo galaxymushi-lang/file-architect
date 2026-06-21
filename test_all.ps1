@@ -54,7 +54,7 @@ function T($name, $ok) {
 $u = "C:\Users\hp\file-architect\uploads"
 
 # ===== CREATE FILES =====
-"Hello World`nTest document`nFileArchitect AI" | Out-File "$u\test.txt" -Encoding UTF8
+"Hello World`nTest document`nGALACTOS AI" | Out-File "$u\test.txt" -Encoding UTF8
 "Name,Salary`nJohn,85000`nSarah,72000" | Out-File "$u\test.csv" -Encoding UTF8
 
 # ===== TXT =====
@@ -164,7 +164,7 @@ T "XLS Chat" ($r.Length -gt 5)
 Write-Host "`n=== DOCX ===" -ForegroundColor Cyan
 $wd = New-Object -ComObject Word.Application; $wd.Visible = $false
 $doc = $wd.Documents.Add()
-$doc.Content.Text = "Test document for FileArchitect.`n`nMultiple paragraphs here."
+$doc.Content.Text = "Test document for GALACTOS.`n`nMultiple paragraphs here."
 $doc.SaveAs("$u\test.docx", 16); $doc.Close(); $wd.Quit()
 [System.Runtime.InteropServices.Marshal]::ReleaseComObject($wd) | Out-Null
 
@@ -192,7 +192,7 @@ Write-Host "`n=== PPTX ===" -ForegroundColor Cyan
 $pp = New-Object -ComObject PowerPoint.Application
 $pres = $pp.Presentations.Add()
 $s1 = $pres.Slides.Add(1, 1)
-$s1.Shapes.Title.TextFrame.TextRange.Text = "FileArchitect Test"
+$s1.Shapes.Title.TextFrame.TextRange.Text = "GALACTOS Test"
 $pres.SaveAs("$u\test.pptx"); $pres.Close(); $pp.Quit()
 [System.Runtime.InteropServices.Marshal]::ReleaseComObject($pp) | Out-Null
 

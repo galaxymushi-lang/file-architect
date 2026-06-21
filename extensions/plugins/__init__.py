@@ -1,1 +1,1 @@
-"""User-created plugins for FileArchitect."""
+"""User-created plugins for GALACTOS."""

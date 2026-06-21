@@ -219,13 +219,16 @@ class ExtensionRegistry:
         return False
 
     def update_config(self, name, config):
-        """Update extension configuration."""
+        """Update extension configuration and re-init the extension."""
         ext = self.extensions.get(name)
         if ext:
             ext.config = config
             self.config[name] = self.config.get(name, {})
             self.config[name]["config"] = config
             self._save_config()
+            # Re-init extension so it reads new config values
+            if hasattr(ext, '_refresh_config'):
+                ext._refresh_config()
             return True
         return False
 
@@ -252,15 +255,22 @@ class ExtensionRegistry:
         return {"error": f"Tool {tool_name} not found"}
 
     def reload(self):
-        """Reload all extensions. Routes are kept from initial registration."""
-        self.extensions.clear()
+        """Reload extension configs and re-init. Routes stay registered."""
+        self._load_config()
+        for name, ext in self.extensions.items():
+            ext_config = self.config.get(name, {}).get("config", {})
+            ext.config = ext_config
+            if hasattr(ext, '_refresh_config'):
+                ext._refresh_config()
+        # Re-setup hooks
         self._hooks = {
             "on_chat_message": [],
             "on_ai_response": [],
             "on_file_upload": [],
         }
-        self._load_config()
-        self._discover_extensions()
+        for name, ext in self.extensions.items():
+            if ext.enabled:
+                self._setup_hooks(ext)
 
 
 # Global registry instance

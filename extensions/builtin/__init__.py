@@ -1,1 +1,1 @@
-"""Built-in extensions for FileArchitect."""
+"""Built-in extensions for GALACTOS."""

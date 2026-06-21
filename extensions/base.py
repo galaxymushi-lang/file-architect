@@ -5,14 +5,14 @@ All extensions must inherit from this class.
 
 
 class BaseExtension:
-    """Base class for all FileArchitect extensions."""
+    """Base class for all GALACTOS extensions."""
 
     # Extension metadata (override in subclass)
     name = "base"
     display_name = "Base Extension"
     description = "Base extension class"
     version = "1.0.0"
-    author = "FileArchitect"
+    author = "GALACTOS"
     icon = "extension"  # Material icon name or SVG string
 
     def __init__(self, app, config=None):

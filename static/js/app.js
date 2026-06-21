@@ -1,919 +1,620 @@
+/* ============================================
+   GALACTOS - Application Logic
+   ============================================ */
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
 let chatHistory = [];
 let selectedAssistant = null;
-let assistants = [];
 let chatModel = 'qwen2.5:0.5b';
 let uploadedFile = null;
 let currentChatId = null;
-let chatSessions = JSON.parse(localStorage.getItem('chatSessions') || '[]');
-let isRecording = false;
-let recognition = null;
+let sessions = JSON.parse(localStorage.getItem('g_sessions') || '[]');
+let allBots = [];
+let ollamaModels = [];
 
-// ========== MARKDOWN SETUP ==========
+// Markdown
 marked.setOptions({
-    highlight: function(code, lang) {
-        if (lang && hljs.getLanguage(lang)) {
-            return hljs.highlight(code, { language: lang }).value;
-        }
-        return hljs.highlightAuto(code).value;
-    },
+    highlight: (code, lang) => lang && hljs.getLanguage(lang) ? hljs.highlight(code, { language: lang }).value : hljs.highlightAuto(code).value,
     breaks: true,
     gfm: true
 });
 
-function renderMarkdown(text) {
-    const html = marked.parse(text);
-    return html.replace(/<pre><code class="language-(\w+)">/g, '<pre><code class="language-$1 hljs">')
-               .replace(/<pre><code>/g, '<pre><code class="hljs">');
+// ---- Utilities ----
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function toast(msg, type) {
+    const el = document.createElement('div');
+    el.className = 'toast-msg' + (type ? ' ' + type : '');
+    el.textContent = msg;
+    $('#toasts').appendChild(el);
+    setTimeout(() => el.remove(), 3000);
 }
 
-function addCodeCopyButtons() {
-    document.querySelectorAll('.msg-bubble pre').forEach(pre => {
-        if (pre.querySelector('.code-copy-btn')) return;
-        const btn = document.createElement('button');
-        btn.className = 'code-copy-btn';
-        btn.textContent = 'COPY';
-        btn.onclick = () => {
-            const code = pre.querySelector('code');
-            navigator.clipboard.writeText(code.textContent).then(() => {
-                btn.textContent = 'COPIED!';
-                showToast('Code copied');
-                setTimeout(() => btn.textContent = 'COPY', 1500);
-            });
-        };
-        pre.appendChild(btn);
-    });
+function grow(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 180) + 'px';
 }
 
-// ========== TOKEN COUNTER ==========
-function estimateTokens(text) {
-    return Math.ceil(text.length / 4);
+function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 }
 
-function updateTokenCount() {
-    let total = 0;
-    chatHistory.forEach(msg => {
-        total += estimateTokens(msg.content);
-    });
-    document.getElementById('tokenCount').textContent = total;
-}
+// ---- Sessions ----
+function saveSessions() { localStorage.setItem('g_sessions', JSON.stringify(sessions)); }
 
-// ========== NOTIFICATIONS ==========
-function showToast(message, type = 'success') {
-    const container = document.getElementById('toastContainer');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.textContent = `> ${message}`;
-    container.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
-
-// ========== CHAT HISTORY ==========
-function saveChatSessions() {
-    localStorage.setItem('chatSessions', JSON.stringify(chatSessions));
-}
-
-function renderChatHistory() {
-    const list = document.getElementById('chatHistoryList');
-    if (!chatSessions.length) {
-        list.innerHTML = '<p style="color:var(--text-dim);font-size:0.65rem;text-align:center;padding:1rem">> NO SESSIONS YET</p>';
-        return;
-    }
-    list.innerHTML = chatSessions.map(s => {
-        const active = s.id === currentChatId ? 'active' : '';
-        const preview = s.messages.length > 0 ? s.messages[s.messages.length - 1].content.substring(0, 40) : 'Empty';
-        const date = new Date(s.updatedAt).toLocaleDateString();
-        return `
-            <div class="chat-history-item ${active}" onclick="loadChatSession('${s.id}')">
-                <div class="chat-history-item-title">${escapeHtml(s.title)}</div>
-                <div class="chat-history-item-meta">
-                    <span>${date} • ${s.messages.length} msgs</span>
-                    <button class="chat-history-item-delete" onclick="event.stopPropagation(); deleteChatSession('${s.id}')">DEL</button>
-                </div>
-            </div>
-        `;
+function renderHistory() {
+    const el = $('#historyList');
+    if (!sessions.length) { el.innerHTML = ''; return; }
+    el.innerHTML = sessions.map(s => {
+        const title = esc(s.title || 'New chat');
+        const active = s.id === currentChatId ? ' active' : '';
+        return '<div class="hist-item' + active + '" data-id="' + s.id + '">' + title + '<button class="del" data-del="' + s.id + '">&times;</button></div>';
     }).join('');
+    // Bind click events directly instead of inline onclick
+    el.querySelectorAll('.hist-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (e.target.classList.contains('del')) return;
+            loadSession(item.dataset.id);
+        });
+    });
+    el.querySelectorAll('.del').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            delSession(btn.dataset.del);
+        });
+    });
 }
 
 function newChat() {
     const id = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-    const session = {
-        id,
-        title: 'New Session',
-        messages: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-    };
-    chatSessions.unshift(session);
+    const session = { id, title: 'New chat', messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+    sessions.unshift(session);
     currentChatId = id;
     chatHistory = [];
-    saveChatSessions();
-    renderChatHistory();
-    
-    const container = document.getElementById('chatMessages');
-    container.innerHTML = `
-        <div class="msg ai">
-            <div class="msg-avatar">AI</div>
-            <div class="msg-bubble">> NEW SESSION INITIALIZED<br>> Neural interface ready.<br>> Awaiting input, operator.</div>
-        </div>
-    `;
-    updateTokenCount();
-    showToast('New chat started');
+    saveSessions();
+    renderHistory();
+    $('#messages').innerHTML = '';
+    $('#emptyState').classList.remove('hidden');
 }
 
-function saveCurrentChat() {
-    if (!currentChatId) return;
-    const session = chatSessions.find(s => s.id === currentChatId);
-    if (!session) return;
-    session.messages = [...chatHistory];
-    session.updatedAt = Date.now();
-    if (chatHistory.length > 0) {
-        const firstMsg = chatHistory[0].content;
-        session.title = firstMsg.substring(0, 40) + (firstMsg.length > 40 ? '...' : '');
-    }
-    saveChatSessions();
-    renderChatHistory();
-}
-
-function loadChatSession(id) {
-    const session = chatSessions.find(s => s.id === id);
-    if (!session) return;
+function loadSession(id) {
+    const s = sessions.find(x => x.id === id);
+    if (!s) { toast('Session not found', 'err'); return; }
     currentChatId = id;
-    chatHistory = [...session.messages];
-    
-    const container = document.getElementById('chatMessages');
-    container.innerHTML = '';
-    
-    if (chatHistory.length === 0) {
-        container.innerHTML = `
-            <div class="msg ai">
-                <div class="msg-avatar">AI</div>
-                <div class="msg-bubble">> SESSION LOADED<br>> Ready for input.</div>
-            </div>
-        `;
+    chatHistory = s.messages ? [...s.messages] : [];
+    $('#messages').innerHTML = '';
+    if (!chatHistory.length) {
+        $('#emptyState').classList.remove('hidden');
     } else {
-        chatHistory.forEach(msg => {
-            const isUser = msg.role === 'user';
-            const div = document.createElement('div');
-            div.className = `msg ${isUser ? 'user' : 'ai'}`;
-            const avatar = isUser ? 'YOU' : 'AI';
-            const content = isUser ? escapeHtml(msg.content).replace(/\n/g, '<br>') : renderMarkdown(msg.content);
-            div.innerHTML = `<div class="msg-avatar">${avatar}</div><div class="msg-bubble">${content}</div>`;
-            container.appendChild(div);
+        $('#emptyState').classList.add('hidden');
+        chatHistory.forEach(m => {
+            if (m && m.role && m.content) appendMsg(m.role === 'user' ? 'user' : 'ai', m.content);
         });
-        addCodeCopyButtons();
     }
-    
-    container.scrollTop = container.scrollHeight;
-    renderChatHistory();
-    updateTokenCount();
+    renderHistory();
+    // Switch to chat tab
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    $('#tab-ai').classList.add('active');
+    $$('.sidebar-btn').forEach(n => n.classList.remove('active'));
 }
 
-function deleteChatSession(id) {
-    chatSessions = chatSessions.filter(s => s.id !== id);
+function delSession(id) {
+    sessions = sessions.filter(x => x.id !== id);
     if (currentChatId === id) {
         currentChatId = null;
         chatHistory = [];
-        newChat();
+        if (sessions.length) loadSession(sessions[0].id);
+        else newChat();
     }
-    saveChatSessions();
-    renderChatHistory();
-    showToast('Session deleted');
+    saveSessions();
+    renderHistory();
+    toast('Deleted');
 }
 
-// ========== EXPORT CHAT ==========
-function exportChat(format = 'md') {
-    if (!chatHistory.length) {
-        showToast('No messages to export', 'warning');
-        return;
-    }
-    
-    let content = '';
-    if (format === 'md') {
-        content = chatHistory.map(msg => {
-            const role = msg.role === 'user' ? '**You**' : '**AI**';
-            return `### ${role}\n\n${msg.content}\n\n---\n`;
-        }).join('\n');
+function saveCurrent() {
+    const s = sessions.find(x => x.id === currentChatId);
+    if (!s) return;
+    s.messages = [...chatHistory];
+    s.updatedAt = Date.now();
+    if (chatHistory.length) s.title = chatHistory[0].content.substring(0, 40);
+    saveSessions();
+    renderHistory();
+}
+
+// ---- Messages ----
+function appendMsg(role, text) {
+    $('#emptyState').classList.add('hidden');
+    const div = document.createElement('div');
+    div.className = 'msg msg-' + role;
+    if (role === 'user') {
+        div.innerHTML = '<div class="msg-content">' + esc(text).replace(/\n/g, '<br>') + '</div>';
     } else {
-        content = chatHistory.map(msg => {
-            const role = msg.role === 'user' ? 'YOU' : 'AI';
-            return `[${role}]\n${msg.content}\n`;
-        }).join('\n---\n\n');
+        div.innerHTML = '<div class="msg-avatar">G</div><div class="msg-body">' + marked.parse(text) + '</div>';
+        div.querySelectorAll('pre').forEach(addCopy);
     }
-    
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `chat-export-${new Date().toISOString().split('T')[0]}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast(`Exported as .${format}`);
+    $('#messages').appendChild(div);
+    scrollDown();
 }
 
-// ========== SEARCH IN CHAT ==========
-function toggleSearch() {
-    const bar = document.getElementById('chatSearchBar');
-    bar.classList.toggle('hidden');
-    if (!bar.classList.contains('hidden')) {
-        document.getElementById('chatSearchInput').focus();
-    } else {
-        clearSearch();
-    }
-}
-
-function searchInChat() {
-    const query = document.getElementById('chatSearchInput').value.toLowerCase();
-    const msgs = document.querySelectorAll('.msg-bubble');
-    
-    msgs.forEach(bubble => {
-        bubble.querySelectorAll('.search-highlight').forEach(el => {
-            el.replaceWith(document.createTextNode(el.textContent));
+function addCopy(pre) {
+    if (pre.querySelector('.btn-copy')) return;
+    const b = document.createElement('button');
+    b.className = 'btn-copy';
+    b.textContent = 'Copy';
+    b.onclick = () => {
+        navigator.clipboard.writeText(pre.querySelector('code').textContent).then(() => {
+            b.textContent = 'Copied';
+            setTimeout(() => b.textContent = 'Copy', 1200);
         });
-    });
-    
-    if (!query) return;
-    
-    msgs.forEach(bubble => {
-        const text = bubble.textContent;
-        if (text.toLowerCase().includes(query)) {
-            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-            bubble.innerHTML = bubble.innerHTML.replace(regex, '<span class="search-highlight">$1</span>');
-        }
-    });
-}
-
-function clearSearch() {
-    document.querySelectorAll('.search-highlight').forEach(el => {
-        el.replaceWith(document.createTextNode(el.textContent));
-    });
-}
-
-// ========== PROMPT TEMPLATES ==========
-const templates = {
-    explain: 'Explain this in simple terms: ',
-    write: 'Write a detailed ',
-    summarize: 'Summarize the following: ',
-    code: 'Write code for: ',
-    fix: 'Fix the following code/error: ',
-    translate: 'Translate this to English: ',
-    email: 'Write a professional email about: ',
-    brainstorm: 'Brainstorm ideas for: '
-};
-
-function useTemplate(key) {
-    const input = document.getElementById('chatInput');
-    input.value = templates[key];
-    input.focus();
-    input.style.height = 'auto';
-    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-}
-
-// ========== VOICE INPUT ==========
-function toggleVoice() {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        showToast('Voice input not supported', 'error');
-        return;
-    }
-    
-    if (isRecording) {
-        if (recognition) recognition.stop();
-        isRecording = false;
-        document.getElementById('voiceBtn').classList.remove('recording');
-        return;
-    }
-    
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    
-    recognition.onstart = () => {
-        isRecording = true;
-        document.getElementById('voiceBtn').classList.add('recording');
-        showToast('Listening...');
     };
-    
-    recognition.onresult = (event) => {
-        const transcript = Array.from(event.results).map(r => r[0].transcript).join('');
-        document.getElementById('chatInput').value = transcript;
-    };
-    
-    recognition.onend = () => {
-        isRecording = false;
-        document.getElementById('voiceBtn').classList.remove('recording');
-    };
-    
-    recognition.onerror = (event) => {
-        isRecording = false;
-        document.getElementById('voiceBtn').classList.remove('recording');
-        showToast('Voice error: ' + event.error, 'error');
-    };
-    
-    recognition.start();
+    pre.style.position = 'relative';
+    pre.appendChild(b);
 }
 
-// ========== SYSTEM DASHBOARD ==========
-async function loadSystemDashboard() {
-    try {
-        const resp = await fetch('/api/system');
-        const data = await resp.json();
-        
-        document.getElementById('cpuFill').style.height = data.cpu_percent + '%';
-        document.getElementById('cpuText').textContent = data.cpu_percent.toFixed(0) + '%';
-        
-        document.getElementById('memFill').style.height = data.memory_percent + '%';
-        document.getElementById('memText').textContent = data.memory_percent.toFixed(0) + '%';
-        const memUsedGB = (data.memory_used / 1073741824).toFixed(1);
-        const memTotalGB = (data.memory_total / 1073741824).toFixed(1);
-        document.getElementById('memLabel').textContent = `${memUsedGB} / ${memTotalGB} GB`;
-        
-        document.getElementById('diskFill').style.height = data.disk_percent + '%';
-        document.getElementById('diskText').textContent = data.disk_percent.toFixed(0) + '%';
-        const diskUsedGB = (data.disk_used / 1073741824).toFixed(1);
-        const diskTotalGB = (data.disk_total / 1073741824).toFixed(1);
-        document.getElementById('diskLabel').textContent = `${diskUsedGB} / ${diskTotalGB} GB`;
-        
-        const modelsList = document.getElementById('systemModels');
-        if (data.models && data.models.length) {
-            modelsList.innerHTML = data.models.map(m => {
-                const sizeGB = (m.size / 1073741824).toFixed(2);
-                return `<div class="system-model-item"><span class="name">${m.name}</span><span class="size">${sizeGB} GB</span></div>`;
-            }).join('');
-        } else {
-            modelsList.innerHTML = '<p style="color:var(--text-dim)">No models found</p>';
-        }
-    } catch (err) {
-        console.error('Failed to load system info:', err);
-    }
-}
+function scrollDown() { const a = $('#chatArea'); a.scrollTop = a.scrollHeight; }
 
-// ========== TAB NAVIGATION ==========
-const pageTitles = {
-    ai: '// TERMINAL',
-    dashboard: '// SYSTEM',
-    assistants: '// AGENTS',
-    personalization: '// PERSONALIZE',
-    extensions: '// EXTENSIONS',
-    settings: '// CONFIG'
-};
+function prefill(text) { $('#chatInput').value = text; $('#chatInput').focus(); }
 
-function switchTab(name) {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    const navBtn = document.querySelector(`[data-tab="${name}"]`);
-    if (navBtn) navBtn.classList.add('active');
-    const tab = document.getElementById(`tab-${name}`);
-    if (tab) tab.classList.add('active');
-    document.getElementById('pageTitle').textContent = pageTitles[name] || '// ' + name.toUpperCase();
-    if (name === 'assistants') loadAssistants();
-    if (name === 'settings') loadSettings();
-    if (name === 'personalization') loadPersonalization();
-    if (name === 'dashboard') loadSystemDashboard();
-    if (name === 'extensions') loadExtensions();
-}
-
-// ========== OLLAMA STATUS ==========
-async function checkOllamaStatus() {
-    try {
-        const resp = await fetch('/api/ollama/status');
-        const data = await resp.json();
-        const el = document.getElementById('ollamaStatus');
-        if (data.status === 'online' && data.models.length > 0) {
-            el.className = 'status-badge online';
-            el.innerHTML = `<span class="status-dot"></span> ONLINE`;
-        } else if (data.status === 'online') {
-            el.className = 'status-badge offline';
-            el.innerHTML = `<span class="status-dot"></span> NO MODEL`;
-        } else {
-            el.className = 'status-badge offline';
-            el.innerHTML = `<span class="status-dot"></span> OFFLINE`;
-        }
-    } catch {
-        document.getElementById('ollamaStatus').className = 'status-badge offline';
-        document.getElementById('ollamaStatus').innerHTML = '<span class="status-dot"></span> ERROR';
-    }
-}
-checkOllamaStatus();
-
-// ========== CHAT MODEL SELECTOR ==========
-async function loadChatModels() {
-    try {
-        const resp = await fetch('/api/ollama/models');
-        const data = await resp.json();
-        const select = document.getElementById('chatModelSelect');
-        if (data.models && data.models.length) {
-            select.innerHTML = data.models.map(m => `<option value="${m}" ${m === chatModel ? 'selected' : ''}>${m}</option>`).join('');
-            chatModel = data.models[0];
-        } else {
-            select.innerHTML = '<option value="qwen2.5:0.5b">qwen2.5:0.5b</option>';
-        }
-        document.getElementById('chatModelInfo').textContent = chatModel;
-    } catch {
-        document.getElementById('chatModelSelect').innerHTML = '<option value="qwen2.5:0.5b">qwen2.5:0.5b</option>';
-    }
-}
-
-function switchChatModel() {
-    const select = document.getElementById('chatModelSelect');
-    chatModel = select.value;
-    document.getElementById('chatModelInfo').textContent = chatModel;
-    showToast(`Switched to ${chatModel}`);
-}
-loadChatModels();
-
-// ========== AI CHAT ==========
-function addAIMessage(text, isUser = false) {
-    const container = document.getElementById('chatMessages');
-    const msg = document.createElement('div');
-    msg.className = `msg ${isUser ? 'user' : 'ai'}`;
-    const avatar = isUser ? 'YOU' : 'AI';
-    const content = isUser ? escapeHtml(text).replace(/\n/g, '<br>') : renderMarkdown(text);
-    msg.innerHTML = `<div class="msg-avatar">${avatar}</div><div class="msg-bubble">${content}</div>`;
-    container.appendChild(msg);
-    container.scrollTop = container.scrollHeight;
-    addCodeCopyButtons();
-}
-
-async function sendChat() {
-    const input = document.getElementById('chatInput');
+// ---- Send ----
+async function send() {
+    const input = $('#chatInput');
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
     input.style.height = 'auto';
-    
-    if (!currentChatId) newChat();
-    
-    addAIMessage(text, true);
-    chatHistory.push({ role: 'user', content: text });
-    updateTokenCount();
 
-    const container = document.getElementById('chatMessages');
-    const msgEl = document.createElement('div');
-    msgEl.className = 'msg ai';
-    msgEl.innerHTML = '<div class="msg-avatar">AI</div><div class="msg-bubble" style="color:var(--text-muted)">> PROCESSING...</div>';
-    container.appendChild(msgEl);
-    container.scrollTop = container.scrollHeight;
-    const bubble = msgEl.querySelector('.msg-bubble');
+    if (!currentChatId) newChat();
+    appendMsg('user', text);
+    chatHistory.push({ role: 'user', content: text });
+
+    // Parse selected model value for assistant_id and model name
+    const modelVal = $('#modelSelect').value;
+    let assistantId = null;
+    let modelName = modelVal;
+    if (modelVal.includes(':')) {
+        const parts = modelVal.split(':');
+        assistantId = parts[0];
+        modelName = parts.slice(1).join(':');
+    }
+
+    const loader = document.createElement('div');
+    loader.className = 'msg msg-ai';
+    loader.innerHTML = '<div class="msg-avatar">G</div><div class="msg-body"><div class="typing"><i></i><i></i><i></i></div></div>';
+    $('#messages').appendChild(loader);
+    scrollDown();
+    const body = loader.querySelector('.msg-body');
 
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000);
-
-        const body = { messages: chatHistory, model: chatModel };
-        if (uploadedFile) body.filename = uploadedFile;
-        if (selectedAssistant) body.assistant_id = selectedAssistant;
-
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 120000);
         const resp = await fetch('/api/ai/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal
+            body: JSON.stringify({ messages: chatHistory, model: modelName, assistant_id: assistantId, filename: uploadedFile }),
+            signal: ctrl.signal
         });
-
-        clearTimeout(timeoutId);
+        clearTimeout(timer);
 
         if (!resp.ok) {
-            const errData = await resp.json().catch(() => ({}));
-            bubble.textContent = '> ERROR: ' + (errData.error || 'Request failed');
-            bubble.style.color = 'var(--danger)';
+            const e = await resp.json().catch(() => ({}));
+            body.innerHTML = '<p style="color:var(--danger)">Error: ' + esc(e.error || 'Request failed') + '</p>';
             return;
         }
 
         const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let aiResponse = '';
-        let buffer = '';
+        const dec = new TextDecoder();
+        let ai = '', buf = '';
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop() || '';
             for (const line of lines) {
                 if (!line.startsWith('data: ')) continue;
                 const d = line.slice(6).trim();
                 if (d === '[DONE]') continue;
                 try {
-                    const parsed = JSON.parse(d);
-                    if (parsed.token) {
-                        aiResponse += parsed.token;
-                        bubble.innerHTML = renderMarkdown(aiResponse);
-                        addCodeCopyButtons();
-                    } else if (parsed.error) {
-                        bubble.textContent = '> ERROR: ' + parsed.error;
-                        bubble.style.color = 'var(--danger)';
+                    const p = JSON.parse(d);
+                    if (p.token) {
+                        ai += p.token;
+                        body.innerHTML = marked.parse(ai);
+                        body.querySelectorAll('pre').forEach(addCopy);
+                    } else if (p.error) {
+                        body.innerHTML = '<p style="color:var(--danger)">Error: ' + esc(p.error) + '</p>';
                         return;
                     }
                 } catch {}
             }
-            container.scrollTop = container.scrollHeight;
+            scrollDown();
         }
 
-        if (!aiResponse) {
-            bubble.textContent = '> NO RESPONSE. Check if Ollama is running.';
-            bubble.style.color = 'var(--warning)';
+        if (!ai) {
+            body.innerHTML = '<p style="color:var(--text-ter)">No response. Is Ollama running?</p>';
         } else {
-            chatHistory.push({ role: 'assistant', content: aiResponse });
+            chatHistory.push({ role: 'assistant', content: ai });
             if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
-            updateTokenCount();
-            saveCurrentChat();
+            saveCurrent();
         }
-
-    } catch (err) {
-        if (err.name === 'AbortError') {
-            bubble.textContent = '> TIMEOUT: Model too slow.';
-        } else {
-            bubble.textContent = '> ERROR: ' + err.message;
-        }
-        bubble.style.color = 'var(--danger)';
+    } catch (e) {
+        body.innerHTML = '<p style="color:var(--danger)">' + (e.name === 'AbortError' ? 'Timeout' : esc(e.message)) + '</p>';
     }
 }
 
-// ========== KEYBOARD SHORTCUTS ==========
-document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'n') {
-        e.preventDefault();
-        newChat();
-    } else if (e.ctrlKey && e.key === 'Enter') {
-        e.preventDefault();
-        sendChat();
-    } else if (e.ctrlKey && e.key === 'f') {
-        e.preventDefault();
-        toggleSearch();
-    } else if (e.ctrlKey && e.key === 'e') {
-        e.preventDefault();
-        exportChat('md');
-    } else if (e.ctrlKey && e.key === '/') {
-        e.preventDefault();
-        document.getElementById('shortcutsModal').classList.remove('hidden');
-    } else if (e.key === 'Escape') {
-        document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
-        document.getElementById('chatSearchBar').classList.add('hidden');
-        clearSearch();
-    }
-});
-
-document.getElementById('chatInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
-});
-
-document.getElementById('chatInput').addEventListener('input', function() {
-    this.style.height = 'auto';
-    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-});
-
-// ========== FILE UPLOAD IN CHAT ==========
-document.getElementById('chatFileInput').addEventListener('change', async function(e) {
-    if (!e.target.files.length) return;
-    const file = e.target.files[0];
-    showLoading();
+// ---- Upload ----
+async function uploadFile(input) {
+    if (!input.files.length) return;
     const fd = new FormData();
-    fd.append('file', file);
+    fd.append('file', input.files[0]);
     try {
-        const resp = await fetch('/api/upload', { method: 'POST', body: fd });
-        const data = await resp.json();
-        if (data.success) {
-            uploadedFile = data.filename;
-            addAIMessage(`> DATA LOADED: ${data.original_name}\n> Ready for analysis.`);
-            showToast('File uploaded: ' + data.original_name);
-        } else {
-            addAIMessage(`> UPLOAD FAILED: ${data.error || 'Unknown error'}`);
-        }
-    } catch (err) {
-        addAIMessage(`> UPLOAD ERROR: ${err.message}`);
-    }
-    hideLoading();
-    this.value = '';
-});
+        const r = await fetch('/api/upload', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.success) { uploadedFile = d.filename; toast('Uploaded: ' + d.original_name); }
+        else toast(d.error || 'Failed', 'err');
+    } catch { toast('Upload error', 'err'); }
+    input.value = '';
+}
 
-// ========== ASSISTANTS ==========
-async function loadAssistants() {
+// ---- Sidebar ----
+function toggleSidebar() {
+    $('#sidebar').classList.toggle('collapsed');
+}
+
+function closeModals() {
+    $$('.modal').forEach(m => m.classList.add('hidden'));
+    $('#modalBg').classList.add('hidden');
+}
+
+// ---- Tabs ----
+function switchTab(name) {
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    $$('.sidebar-btn').forEach(n => n.classList.remove('active'));
+    const tab = $('#tab-' + name);
+    if (tab) tab.classList.add('active');
+    const btn = document.querySelector('[data-tab="' + name + '"]');
+    if (btn) btn.classList.add('active');
+    if (name === 'settings') { loadSettings(); loadBots(); }
+    if (name === 'personalization') loadPersonalization();
+    if (name === 'extensions') loadExtensions();
+}
+
+// ---- Ollama ----
+async function checkStatus() {
     try {
-        const resp = await fetch('/api/assistants');
-        assistants = await resp.json();
-        renderAssistants();
-    } catch (err) { console.error('Failed:', err); }
-}
-
-function renderAssistants() {
-    const container = document.getElementById('assistantList');
-    if (!assistants.length) {
-        container.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:2rem;letter-spacing:2px">> NO AGENTS DEPLOYED<br>> CLICK "+ DEPLOY" TO INITIALIZE</p>';
-        return;
-    }
-    container.innerHTML = assistants.map(a => `
-        <div class="assistant-card ${selectedAssistant === a.id ? 'selected' : ''}" onclick="selectAssistant('${a.id}')">
-            <div class="assistant-card-header">
-                <div class="assistant-icon" style="background:${a.provider === 'openai' ? '#22c55e' : a.provider === 'groq' ? '#f59e0b' : a.provider === 'gemini' ? '#4285f4' : '#00ff41'};box-shadow:0 0 10px ${a.provider === 'openai' ? '#22c55e40' : a.provider === 'groq' ? '#f59e0b40' : a.provider === 'gemini' ? '#4285f440' : '#00ff4140'}">${a.provider[0].toUpperCase()}</div>
-                <div>
-                    <h4>${a.name}</h4>
-                    <span class="assistant-provider">${a.provider}</span>
-                </div>
-                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); deleteAssistant('${a.id}')" title="Terminate">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-            </div>
-            <div class="assistant-card-body">
-                <div class="assistant-detail"><span>MODEL:</span> ${a.model}</div>
-                ${a.api_key ? '<div class="assistant-detail"><span>KEY:</span> ***' + a.api_key.slice(-4) + '</div>' : ''}
-            </div>
-        </div>
-    `).join('');
-}
-
-function selectAssistant(id) {
-    selectedAssistant = selectedAssistant === id ? null : id;
-    renderAssistants();
-    const name = selectedAssistant ? assistants.find(a => a.id === id)?.name : 'DEFAULT';
-    addAIMessage(`> AGENT ACTIVE: ${name}`);
-    showToast(`Agent: ${name}`);
-}
-
-async function deleteAssistant(id) {
-    if (!confirm('Terminate this agent?')) return;
-    try {
-        await fetch(`/api/assistants/${id}`, { method: 'DELETE' });
-        if (selectedAssistant === id) selectedAssistant = null;
-        loadAssistants();
-        showToast('Agent terminated');
-    } catch (err) { alert('Error: ' + err.message); }
-}
-
-function showAddAssistantModal() {
-    document.getElementById('addAssistantModal').classList.remove('hidden');
-    loadOllamaModels();
-}
-
-function closeModal(id) {
-    document.getElementById(id).classList.add('hidden');
-}
-
-async function loadOllamaModels() {
-    try {
-        const resp = await fetch('/api/ollama/models');
-        const data = await resp.json();
-        const select = document.getElementById('assistantModel');
-        if (data.models && data.models.length) {
-            select.innerHTML = data.models.map(m => `<option value="${m}">${m}</option>`).join('');
-        } else {
-            select.innerHTML = '<option value="qwen2.5:0.5b">qwen2.5:0.5b</option>';
-        }
-    } catch { document.getElementById('assistantModel').innerHTML = '<option value="qwen2.5:0.5b">qwen2.5:0.5b</option>'; }
-}
-
-function updateModelOptions() {
-    const provider = document.getElementById('assistantProvider').value;
-    document.getElementById('apiKeyGroup').classList.toggle('hidden', provider === 'ollama');
-    document.getElementById('ollamaModelsGroup').classList.toggle('hidden', provider !== 'ollama');
-    
-    const modelSelect = document.getElementById('assistantModel');
-    if (provider === 'openai') {
-        modelSelect.innerHTML = '<option value="gpt-3.5-turbo">GPT-3.5 TURBO</option><option value="gpt-4">GPT-4</option><option value="gpt-4-turbo">GPT-4 TURBO</option>';
-    } else if (provider === 'groq') {
-        modelSelect.innerHTML = '<option value="llama3-8b-8192">LLAMA3 8B</option><option value="llama3-70b-8192">LLAMA3 70B</option><option value="mixtral-8x7b-32768">MIXTRAL 8X7B</option>';
-    } else if (provider === 'gemini') {
-        modelSelect.innerHTML = '<option value="gemini-1.5-flash">GEMINI 1.5 FLASH</option><option value="gemini-1.5-pro">GEMINI 1.5 PRO</option><option value="gemini-2.0-flash">GEMINI 2.0 FLASH</option>';
+        const r = await fetch('/api/ollama/status');
+        const d = await r.json();
+        const dot = $('#ollamaStatus .status-dot');
+        const txt = $('#ollamaStatus .status-text');
+        if (d.status === 'online' && d.models.length) { dot.className = 'status-dot on'; txt.textContent = 'Online'; }
+        else if (d.status === 'online') { dot.className = 'status-dot off'; txt.textContent = 'No model'; }
+        else { dot.className = 'status-dot off'; txt.textContent = 'Offline'; }
+    } catch {
+        $('#ollamaStatus .status-dot').className = 'status-dot off';
+        $('#ollamaStatus .status-text').textContent = 'Error';
     }
 }
 
-async function addAssistant() {
-    const name = document.getElementById('assistantName').value.trim() || 'AGENT';
-    const provider = document.getElementById('assistantProvider').value;
-    const model = document.getElementById('assistantModel').value;
-    const api_key = document.getElementById('assistantApiKey').value;
-    const system_prompt = document.getElementById('assistantPrompt').value;
-    
+async function loadModels() {
     try {
-        const resp = await fetch('/api/assistants', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, provider, model, api_key, system_prompt })
-        });
-        const data = await resp.json();
-        if (data.success) {
-            closeModal('addAssistantModal');
-            document.getElementById('assistantName').value = '';
-            document.getElementById('assistantApiKey').value = '';
-            document.getElementById('assistantPrompt').value = '';
-            loadAssistants();
-            addAIMessage(`> AGENT DEPLOYED: ${name}`);
-            showToast(`Agent deployed: ${name}`);
+        const r = await fetch('/api/ollama/models');
+        const d = await r.json();
+        if (d.models && d.models.length) {
+            ollamaModels = d.models;
+            chatModel = d.models[0];
+            $('#modelBadge').textContent = chatModel;
         }
-    } catch (err) { alert('Error: ' + err.message); }
+    } catch {}
+    updateModelSelect();
 }
 
-// ========== PERSONALIZATION ==========
-async function loadPersonalization() {
-    try {
-        const resp = await fetch('/api/personalization');
-        const p = await resp.json();
-        document.getElementById('pName').value = p.name || '';
-        document.getElementById('pRole').value = p.role || 'developer';
-        document.getElementById('pWorkStyle').value = p.work_style || 'concise';
-        document.getElementById('pLanguage').value = p.language || 'en';
-        document.getElementById('pTone').value = p.tone || 'professional';
-        document.getElementById('pLength').value = p.length || 'medium';
-        document.getElementById('pDomain').value = p.domain || 'general';
-        document.getElementById('pCodeStyle').value = p.code_style || 'python';
-        document.getElementById('pTags').value = p.tags || '';
-        document.getElementById('pAutoCorrect').checked = p.auto_correct !== false;
-        document.getElementById('pExplainCode').checked = p.explain_code !== false;
-        document.getElementById('pShowExamples').checked = p.show_examples !== false;
-        document.getElementById('pAskClarify').checked = p.ask_clarify !== false;
-    } catch (err) { console.error('Failed:', err); }
+function updateModel() {
+    const val = $('#modelSelect').value;
+    if (val.includes(':')) {
+        const parts = val.split(':');
+        chatModel = parts.slice(1).join(':');
+    } else {
+        chatModel = val;
+    }
+    $('#modelBadge').textContent = chatModel;
 }
 
-async function savePersonalization() {
-    const p = {
-        name: document.getElementById('pName').value,
-        role: document.getElementById('pRole').value,
-        work_style: document.getElementById('pWorkStyle').value,
-        language: document.getElementById('pLanguage').value,
-        tone: document.getElementById('pTone').value,
-        length: document.getElementById('pLength').value,
-        domain: document.getElementById('pDomain').value,
-        code_style: document.getElementById('pCodeStyle').value,
-        tags: document.getElementById('pTags').value,
-        auto_correct: document.getElementById('pAutoCorrect').checked,
-        explain_code: document.getElementById('pExplainCode').checked,
-        show_examples: document.getElementById('pShowExamples').checked,
-        ask_clarify: document.getElementById('pAskClarify').checked
-    };
-    try {
-        await fetch('/api/personalization', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(p)
-        });
-        showToast('Personalization saved');
-    } catch (err) { console.error('Failed:', err); }
-}
-
-// ========== SETTINGS ==========
+// ---- Settings ----
 async function loadSettings() {
     try {
-        const resp = await fetch('/api/settings');
-        const settings = await resp.json();
-        document.getElementById('settingTheme').value = settings.theme || 'matrix';
-        document.getElementById('settingTemperature').value = settings.temperature || 0.7;
-        document.getElementById('tempValue').textContent = settings.temperature || 0.7;
-        document.getElementById('settingMaxTokens').value = settings.max_tokens || 2048;
-        loadOllamaModelsForSettings(settings.default_model);
+        const r = await fetch('/api/settings');
+        const s = await r.json();
+        $('#settingTheme').value = s.theme || 'dark';
+        $('#settingTemperature').value = s.temperature || 0.7;
+        $('#tempVal').textContent = s.temperature || 0.7;
+        $('#settingMaxTokens').value = s.max_tokens || 2048;
+        applyTheme(s.theme || 'dark');
         loadAssistantsForSettings();
-    } catch (err) { console.error('Failed:', err); }
+    } catch {}
 }
 
-async function loadOllamaModelsForSettings(selected) {
+function applyTheme(t) {
+    document.body.classList.remove('dark');
+    if (t === 'dark') document.body.classList.add('dark');
+}
+
+async function saveSettings() {
+    const s = {
+        theme: $('#settingTheme').value,
+        active_assistant: $('#settingActiveAssistant').value,
+        default_model: $('#settingDefaultModel').value,
+        temperature: parseFloat($('#settingTemperature').value),
+        max_tokens: parseInt($('#settingMaxTokens').value)
+    };
+    selectedAssistant = s.active_assistant === 'default' ? null : s.active_assistant;
+    applyTheme(s.theme);
     try {
-        const resp = await fetch('/api/ollama/models');
-        const data = await resp.json();
-        const select = document.getElementById('settingDefaultModel');
-        if (data.models && data.models.length) {
-            select.innerHTML = data.models.map(m => `<option value="${m}" ${m === selected ? 'selected' : ''}>${m}</option>`).join('');
-        }
+        await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) });
     } catch {}
 }
 
 async function loadAssistantsForSettings() {
     try {
-        const resp = await fetch('/api/assistants');
-        const list = await resp.json();
-        const select = document.getElementById('settingActiveAssistant');
-        select.innerHTML = '<option value="default">DEFAULT [LOCAL]</option>';
-        list.forEach(a => {
-            select.innerHTML += `<option value="${a.id}">${a.name} (${a.provider})</option>`;
+        const r = await fetch('/api/assistants');
+        const list = await r.json();
+        const sel = $('#settingActiveAssistant');
+        sel.innerHTML = '<option value="default">Default</option>';
+        list.forEach(a => { sel.innerHTML += '<option value="' + a.id + '">' + a.name + ' (' + a.provider + ')</option>'; });
+    } catch {}
+}
+
+// ---- Chatbot Providers ----
+const providerMeta = {
+    ollama:     { label: 'Ollama', color: '#333', icon: 'O', models: 'qwen2.5:0.5b, phi3, tinyllama, llama3, mistral, codellama' },
+    openai:     { label: 'OpenAI', color: '#10a37f', icon: 'G', models: 'gpt-4o, gpt-4o-mini, gpt-4-turbo, o1-mini, gpt-3.5-turbo' },
+    anthropic:  { label: 'Claude', color: '#d97706', icon: 'C', models: 'claude-opus-4-20250514, claude-sonnet-4-20250514, claude-3-haiku-20240307' },
+    google:     { label: 'Gemini', color: '#4285f4', icon: 'G', models: 'gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash' },
+    groq:       { label: 'Groq', color: '#f55036', icon: 'Q', models: 'llama-3.3-70b-versatile, mixtral-8x7b-32768, gemma2-9b-it' },
+    openrouter: { label: 'OpenRouter', color: '#6366f1', icon: 'R', models: 'anthropic/claude-3.5-sonnet, openai/gpt-4o, meta-llama/llama-3.1-405b' },
+    custom:     { label: 'Custom', color: '#737373', icon: 'A', models: '' }
+};
+
+async function loadBots() {
+    try {
+        const r = await fetch('/api/assistants');
+        allBots = await r.json();
+        renderBots(allBots);
+        updateModelSelect();
+    } catch {}
+}
+
+function updateModelSelect() {
+    const sel = $('#modelSelect');
+    const def = $('#settingDefaultModel');
+    let opts = '';
+    // Add Ollama models
+    if (ollamaModels.length) {
+        ollamaModels.forEach(m => { opts += '<option value="' + m + '">' + m + ' (Local)</option>'; });
+    }
+    // Add bot providers
+    allBots.forEach(b => {
+        const models = b.models && b.models.length ? b.models : [b.model || 'default'];
+        models.forEach(m => {
+            opts += '<option value="' + b.id + ':' + m + '">' + b.name + ' / ' + m + '</option>';
+        });
+    });
+    if (opts) {
+        sel.innerHTML = opts;
+        if (def) def.innerHTML = opts;
+    }
+}
+
+function renderBots(bots) {
+    const el = $('#botsList');
+    if (!bots.length) { el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-ter);font-size:13px">No providers added. Click "+ Add provider" to get started.</div>'; return; }
+    el.innerHTML = bots.map(b => {
+        const meta = providerMeta[b.provider] || providerMeta.custom;
+        const color = meta.color;
+        const models = b.models ? b.models.join(', ') : (b.model || 'Not set');
+        return '<div class="bot-card">' +
+            '<div class="bot-icon" style="background:' + color + '">' + meta.icon + '</div>' +
+            '<div class="bot-info"><h4>' + esc(b.name) + '</h4><p>' + meta.label + ' &middot; ' + esc(models) + '</p></div>' +
+            '<div class="bot-actions">' +
+            '<button class="btn-sm" onclick="testBot(\'' + b.id + '\')">Test</button>' +
+            '<button class="btn-sm danger" onclick="deleteBot(\'' + b.id + '\')">Delete</button>' +
+            '</div></div>';
+    }).join('');
+}
+
+function showAddBotModal() {
+    $('#addBotModal').classList.remove('hidden');
+    $('#modalBg').classList.remove('hidden');
+    $('#botProvider').value = 'openai';
+    onBotProviderChange();
+}
+
+function onBotProviderChange() {
+    const p = $('#botProvider').value;
+    const meta = providerMeta[p] || {};
+    const models = meta.models || '';
+    $('#botModel').placeholder = models ? 'e.g. ' + models.split(', ').slice(0, 2).join(', ') : 'Model name';
+    // Hide API key for Ollama
+    $('#botKeyField').style.display = p === 'ollama' ? 'none' : 'block';
+    // Show URL for custom
+    $('#botUrlField').style.display = p === 'custom' ? 'block' : 'none';
+}
+
+async function saveBot() {
+    const provider = $('#botProvider').value;
+    const name = $('#botName').value.trim();
+    const model = $('#botModel').value.trim();
+    const apiKey = $('#botKey').value.trim();
+    const apiUrl = $('#botUrl').value.trim();
+    const prompt = $('#botPrompt').value.trim();
+
+    if (!name) { toast('Enter a name', 'err'); return; }
+    if (!model && provider !== 'ollama') { toast('Enter a model name', 'err'); return; }
+
+    // For ollama, get models from the server
+    let models = model ? model.split(',').map(m => m.trim()) : [];
+    if (provider === 'ollama' && !models.length) {
+        try {
+            const r = await fetch('/api/ollama/models');
+            const d = await r.json();
+            models = d.models || [];
+        } catch {}
+    }
+
+    const bot = {
+        name: name,
+        provider: provider,
+        model: models[0] || model,
+        models: models,
+        api_key: apiKey,
+        api_url: apiUrl,
+        system_prompt: prompt
+    };
+
+    try {
+        const r = await fetch('/api/assistants', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bot) });
+        const d = await r.json();
+        if (d.id) {
+            toast('Provider added');
+            closeModals();
+            loadBots();
+            loadAssistantsForSettings();
+        } else {
+            toast(d.error || 'Failed', 'err');
+        }
+    } catch { toast('Failed to add provider', 'err'); }
+}
+
+async function deleteBot(id) {
+    if (!confirm('Delete this provider?')) return;
+    try {
+        await fetch('/api/assistants/' + id, { method: 'DELETE' });
+        toast('Deleted');
+        loadBots();
+        loadAssistantsForSettings();
+    } catch { toast('Failed', 'err'); }
+}
+
+async function testBot(id) {
+    toast('Testing connection...');
+    // Quick test via chat
+    try {
+        const r = await fetch('/api/ai/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: [{ role: 'user', content: 'Say hello in one word' }], assistant_id: id })
+        });
+        if (r.ok) toast('Connection OK');
+        else toast('Connection failed', 'err');
+    } catch { toast('Connection failed', 'err'); }
+}
+
+function exportData() {
+    const data = { sessions, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'galactos_export.json'; a.click();
+    URL.revokeObjectURL(url);
+    toast('Exported');
+}
+
+function clearAllChats() {
+    if (!confirm('Delete all conversations? This cannot be undone.')) return;
+    sessions = [];
+    currentChatId = null;
+    chatHistory = [];
+    saveSessions();
+    renderHistory();
+    newChat();
+    toast('All conversations deleted');
+}
+
+// ---- Personalization ----
+async function loadPersonalization() {
+    try {
+        const r = await fetch('/api/personalization');
+        const d = await r.json();
+        ['name', 'role', 'work_style', 'language', 'tone', 'response_length', 'domain', 'code_style', 'tags'].forEach(k => {
+            const el = $('#p' + k.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(''));
+            if (el && d[k]) el.value = d[k];
+        });
+        ['auto_correct', 'explain_code', 'show_examples', 'ask_clarify'].forEach(k => {
+            const el = $('#p' + k.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(''));
+            if (el && d[k] !== undefined) el.checked = d[k];
         });
     } catch {}
 }
 
-async function saveSettings() {
-    const settings = {
-        theme: document.getElementById('settingTheme').value,
-        active_assistant: document.getElementById('settingActiveAssistant').value,
-        default_model: document.getElementById('settingDefaultModel').value,
-        temperature: parseFloat(document.getElementById('settingTemperature').value),
-        max_tokens: parseInt(document.getElementById('settingMaxTokens').value)
+function savePersonalization() {
+    const d = {
+        name: $('#pName').value,
+        role: $('#pRole').value,
+        work_style: $('#pWorkStyle').value,
+        language: $('#pLanguage').value,
+        tone: $('#pTone').value,
+        response_length: $('#pLength').value,
+        domain: $('#pDomain').value,
+        code_style: $('#pCodeStyle').value,
+        tags: $('#pTags').value,
+        auto_correct: $('#pAutoCorrect').checked,
+        explain_code: $('#pExplainCode').checked,
+        show_examples: $('#pShowExamples').checked,
+        ask_clarify: $('#pAskClarify').checked
     };
-    selectedAssistant = settings.active_assistant === 'default' ? null : settings.active_assistant;
-    try {
-        await fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(settings)
-        });
-        showToast('Settings saved');
-    } catch (err) { console.error('Failed:', err); }
+    fetch('/api/personalization', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
 }
 
-// ========== UTILITIES ==========
-function escapeHtml(text) {
-    const d = document.createElement('div');
-    d.textContent = text;
-    return d.innerHTML;
-}
-
-function showLoading() { document.getElementById('loadingOverlay').classList.remove('hidden'); }
-function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
-
-// ========== EXTENSIONS ==========
-let extensionsData = [];
+// ---- Extensions ----
+let extData = [];
 
 async function loadExtensions() {
     try {
-        const res = await fetch('/api/extensions');
-        extensionsData = await res.json();
-        renderExtensions();
-    } catch (err) {
-        document.getElementById('extensionsList').innerHTML = '<p style="color:#ff4444">Failed to load extensions</p>';
-    }
+        const r = await fetch('/api/extensions');
+        extData = await r.json();
+        renderExts();
+    } catch {}
 }
 
-function renderExtensions() {
-    const container = document.getElementById('extensionsList');
-    if (!extensionsData.length) {
-        container.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:2rem">No extensions found.<br>Copy <code>extensions/plugins/example.py</code> to create your own!</p>';
-        return;
-    }
-    container.innerHTML = extensionsData.map(ext => `
-        <div class="extension-card ${ext.enabled ? '' : 'disabled'}">
-            <div class="extension-icon">${getExtIcon(ext.icon)}</div>
-            <div class="extension-info">
-                <h4>${escapeHtml(ext.display_name)}</h4>
-                <p>${escapeHtml(ext.description)}</p>
-                <div class="extension-meta">
-                    <span>v${ext.version}</span>
-                    <span>by ${escapeHtml(ext.author)}</span>
-                    ${ext.has_tools ? '<span>🔧 Tools</span>' : ''}
-                    ${ext.has_routes ? '<span>🌐 API</span>' : ''}
-                    ${ext.has_settings ? '<span>⚙ Settings</span>' : ''}
-                </div>
-            </div>
-            <div class="extension-actions">
-                ${ext.has_settings ? `<button class="extension-settings-btn" onclick="showExtSettings('${ext.name}')" title="Settings">⚙</button>` : ''}
-                <div class="toggle-switch ${ext.enabled ? 'active' : ''}" onclick="toggleExtension('${ext.name}', ${!ext.enabled})"></div>
-            </div>
-        </div>
-    `).join('');
+function renderExts() {
+    const el = $('#extList');
+    if (!extData.length) { el.innerHTML = '<p style="color:var(--text-ter);text-align:center;padding:2rem">No extensions loaded</p>'; return; }
+    el.innerHTML = extData.map(e =>
+        '<div class="ext-card"><div><h4>' + esc(e.display_name) + '</h4><p>' + esc(e.description) + ' v' + e.version + '</p></div>' +
+        '<label class="toggle"><input type="checkbox"' + (e.enabled ? ' checked' : '') + ' onchange="toggleExt(\'' + e.name + '\',this.checked)"><span class="toggle-track"></span></label></div>'
+    ).join('');
 }
 
-function getExtIcon(icon) {
-    const icons = {
-        search: '🔍', tts: '🔊', code: '💻', email: '📧',
-        drive: '📁', webhook: '🔗', puzzle: '🧩', cpu: '⚙',
-        brain: '🧠', globe: '🌐', shield: '🛡', chart: '📊'
-    };
-    return icons[icon] || '🧩';
+async function toggleExt(name, on) {
+    const endpoint = on ? '/enable' : '/disable';
+    await fetch('/api/extensions/' + name + endpoint, { method: 'POST' });
+    loadExtensions();
 }
 
-async function toggleExtension(name, enable) {
-    try {
-        await fetch(`/api/extensions/${name}/${enable ? 'enable' : 'disable'}`, { method: 'POST' });
-        loadExtensions();
-        showToast(`Extension ${enable ? 'enabled' : 'disabled'}`);
-    } catch (err) { showToast('Failed', 'error'); }
+async function reloadExts() {
+    await fetch('/api/extensions/reload', { method: 'POST' });
+    loadExtensions();
+    toast('Extensions reloaded');
 }
 
-async function reloadExtensions() {
-    try {
-        await fetch('/api/extensions/reload', { method: 'POST' });
-        loadExtensions();
-        showToast('Extensions reloaded');
-    } catch (err) { showToast('Failed to reload', 'error'); }
-}
+// ---- Keyboard ----
+document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 'n') { e.preventDefault(); newChat(); }
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); send(); }
+    if (e.ctrlKey && e.key === '/') { e.preventDefault(); $('#shortcutsModal').classList.remove('hidden'); $('#modalBg').classList.remove('hidden'); }
+    if (e.key === 'Escape') closeModals();
+});
 
-function showExtSettings(name) {
-    const ext = extensionsData.find(e => e.name === name);
-    if (!ext) return;
-    showToast(`Settings for ${ext.display_name} (coming soon)`);
+// ---- Init ----
+checkStatus();
+setInterval(checkStatus, 30000);
+loadModels();
+loadBots();
+// Restore last session or create new
+if (sessions.length > 0) {
+    renderHistory();
+    loadSession(sessions[0].id);
+} else {
+    newChat();
 }
-
-function showPluginDocs() {
-    const docs = `
-        <div class="plugin-docs">
-            <h4>// HOW TO CREATE AN EXTENSION</h4>
-            <p>1. Copy <code>extensions/plugins/example.py</code></p>
-            <p>2. Rename and edit the class</p>
-            <p>3. Reload extensions</p>
-            <h4>// AVAILABLE HOOKS</h4>
-            <p><code>on_chat_message(msg, ctx)</code> - Process messages before AI</p>
-            <p><code>on_ai_response(msg, ctx)</code> - Process AI responses</p>
-            <p><code>get_chat_tools()</code> - Add tools the AI can use</p>
-            <p><code>execute_tool(name, params)</code> - Handle tool calls</p>
-            <p><code>get_routes()</code> - Add custom API endpoints</p>
-            <p><code>get_settings_schema()</code> - Add settings UI</p>
-            <h4>// FILES</h4>
-            <p><code>extensions/plugins/</code> - Your custom plugins</p>
-            <p><code>extensions/builtin/</code> - Built-in extensions</p>
-        </div>
-    `;
-    const container = document.getElementById('extensionsList');
-    const existing = container.querySelector('.plugin-docs');
-    if (existing) existing.remove();
-    container.insertAdjacentHTML('afterbegin', docs);
-}
-
-// ========== INIT ==========
-newChat();

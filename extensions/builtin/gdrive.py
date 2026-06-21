@@ -18,7 +18,7 @@ class GoogleDriveExtension(BaseExtension):
     display_name = "Google Drive"
     description = "Upload and download files from Google Drive"
     version = "1.0.0"
-    author = "FileArchitect"
+    author = "GALACTOS"
     icon = "drive"
 
     AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
@@ -175,7 +175,7 @@ class GoogleDriveExtension(BaseExtension):
         try:
             import io
             metadata = {"name": filename}
-            boundary = "----FileArchitectBoundary"
+            boundary = "----GALACTOSBoundary"
             body = f"--{boundary}\r\nContent-Type: application/json\r\n\r\n{json.dumps(metadata)}\r\n--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n".encode()
             body += content
             body += f"\r\n--{boundary}--\r\n".encode()

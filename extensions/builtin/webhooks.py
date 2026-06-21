@@ -18,7 +18,7 @@ class WebhookExtension(BaseExtension):
     display_name = "Webhook System"
     description = "Send and receive webhooks for automation and integrations"
     version = "1.0.0"
-    author = "FileArchitect"
+    author = "GALACTOS"
     icon = "webhook"
 
     def __init__(self, app, config=None):
@@ -61,7 +61,7 @@ class WebhookExtension(BaseExtension):
         def test_webhook():
             data = request.get_json()
             url = data.get("url", "")
-            result = self._send_webhook(url, {"event": "test", "data": "Test webhook from FileArchitect"})
+            result = self._send_webhook(url, {"event": "test", "data": "Test webhook from GALACTOS"})
             return jsonify(result)
 
         return {

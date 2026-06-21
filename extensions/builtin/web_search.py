@@ -16,7 +16,7 @@ class WebSearchExtension(BaseExtension):
     display_name = "Web Search"
     description = "Search the web using DuckDuckGo. No API key required."
     version = "1.0.0"
-    author = "FileArchitect"
+    author = "GALACTOS"
     icon = "search"
 
     def __init__(self, app, config=None):

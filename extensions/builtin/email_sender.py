@@ -16,8 +16,8 @@ class EmailExtension(BaseExtension):
     name = "email_sender"
     display_name = "Email Sender"
     description = "Send emails via SMTP (Gmail, Outlook, custom SMTP server)"
-    version = "1.0.0"
-    author = "FileArchitect"
+    version = "1.1.0"
+    author = "GALACTOS"
     icon = "email"
 
     PROVIDERS = {
@@ -29,9 +29,16 @@ class EmailExtension(BaseExtension):
 
     def __init__(self, app, config=None):
         super().__init__(app, config)
+        self._refresh_config()
+
+    def _refresh_config(self):
+        """Re-read config from self.config dict."""
         self.provider = self.get_config("provider", "gmail")
-        self.email = self.get_config("email", "")
+        self.email_addr = self.get_config("email", "")
         self.password = self.get_config("password", "")
+        self.custom_host = self.get_config("custom_host", "")
+        self.custom_port = int(self.get_config("custom_port", 587))
+        self.custom_tls = self.get_config("custom_tls", True)
 
     def get_routes(self):
         from flask import request, jsonify
@@ -45,8 +52,9 @@ class EmailExtension(BaseExtension):
 
             if not all([to, subject, body]):
                 return jsonify({"error": "to, subject, and body required"}), 400
-            if not self.email or not self.password:
-                return jsonify({"error": "Email not configured. Go to Extensions > Email > Settings"}), 400
+            self._refresh_config()
+            if not self.email_addr or not self.password:
+                return jsonify({"error": "Email not configured. Click Settings on Email extension."}), 400
 
             result = self._send_email(to, subject, body, html)
             return jsonify(result)
@@ -70,20 +78,30 @@ class EmailExtension(BaseExtension):
     def _send_email(self, to, subject, body, html=False):
         """Send email via SMTP."""
         try:
-            provider_config = self.PROVIDERS.get(self.provider, self.PROVIDERS["gmail"])
+            if self.provider == "custom":
+                host = self.custom_host
+                port = self.custom_port
+                tls = self.custom_tls
+                if not host:
+                    return {"success": False, "error": "Custom SMTP host is empty. Configure it in extension settings."}
+            else:
+                pc = self.PROVIDERS.get(self.provider, self.PROVIDERS["gmail"])
+                host = pc["host"]
+                port = pc["port"]
+                tls = pc["tls"]
 
             msg = MIMEMultipart("alternative")
-            msg["From"] = self.email
+            msg["From"] = self.email_addr
             msg["To"] = to
             msg["Subject"] = subject
 
             content_type = "html" if html else "plain"
             msg.attach(MIMEText(body, content_type))
 
-            with smtplib.SMTP(provider_config["host"], provider_config["port"]) as server:
-                if provider_config.get("tls"):
+            with smtplib.SMTP(host, port) as server:
+                if tls:
                     server.starttls()
-                server.login(self.email, self.password)
+                server.login(self.email_addr, self.password)
                 server.send_message(msg)
 
             return {"success": True, "message": f"Email sent to {to}"}
@@ -112,6 +130,7 @@ class EmailExtension(BaseExtension):
 
     def execute_tool(self, tool_name, parameters):
         if tool_name == "send_email":
+            self._refresh_config()
             return self._send_email(
                 parameters.get("to", ""),
                 parameters.get("subject", ""),
@@ -133,19 +152,41 @@ class EmailExtension(BaseExtension):
                         {"value": "yahoo", "label": "Yahoo Mail"},
                         {"value": "custom", "label": "Custom SMTP"}
                     ],
-                    "value": "gmail"
+                    "value": self.get_config("provider", "gmail")
                 },
                 {
                     "name": "email",
                     "type": "text",
                     "label": "Email Address",
-                    "placeholder": "your@email.com"
+                    "placeholder": "your@email.com",
+                    "value": self.get_config("email", "")
                 },
                 {
                     "name": "password",
                     "type": "password",
                     "label": "Password / App Password",
-                    "placeholder": "For Gmail, use App Password"
+                    "placeholder": "For Gmail, use App Password",
+                    "value": self.get_config("password", "")
+                },
+                {
+                    "name": "custom_host",
+                    "type": "text",
+                    "label": "SMTP Host (Custom only)",
+                    "placeholder": "smtp.example.com",
+                    "value": self.get_config("custom_host", "")
+                },
+                {
+                    "name": "custom_port",
+                    "type": "number",
+                    "label": "SMTP Port (Custom only)",
+                    "placeholder": "587",
+                    "value": self.get_config("custom_port", 587)
+                },
+                {
+                    "name": "custom_tls",
+                    "type": "boolean",
+                    "label": "Enable TLS (Custom only)",
+                    "value": self.get_config("custom_tls", True)
                 }
             ]
         }
